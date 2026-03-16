@@ -4,46 +4,44 @@ import yt_dlp
 app = Flask(__name__)
 
 @app.route('/api/download', methods=['GET'])
-def download_video():
-    # 1. Flutter app se URL lena
-    video_url = request.args.get('url')
-    
-    if not video_url:
-        return jsonify({"success": False, "error": "URL is missing"}), 400
+def download():
+    url = request.args.get('url')
+    if not url:
+        return jsonify({"success": False, "error": "URL is required"}), 400
 
-    # 2. yt-dlp ki settings (Sirf link nikalna hai, download nahi karna)
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
-        'format': 'best', # HD quality ke liye
     }
 
     try:
-        # 3. Instagram se data nikalna
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(video_url, download=False)
+            info = ydl.extract_info(url, download=False)
             
-            # Agar list format mein aaye
+            # Agar post mein ek se zyada photos/videos (Carousel) hain
             if 'entries' in info:
-                info = info['entries'][0]
+                info = info['entries'][0] # Abhi ke liye pehla photo/video lenge
             
-            video_link = info.get('url', '')
-            thumbnail = info.get('thumbnail', '')
+            # Smart Check: Ye video hai ya photo?
+            is_video = True
+            if info.get('ext') in ['jpg', 'jpeg', 'png', 'webp'] or info.get('vcodec') == 'none':
+                is_video = False
 
-            if video_link:
-                return jsonify({
-                    "success": True,
-                    "data": {
-                        "video_url": video_link,
-                        "thumbnail": thumbnail
-                    }
-                })
-            else:
-                return jsonify({"success": False, "error": "Video link nahi mila"}), 404
-                
+            # Asli HD link nikalna
+            media_url = info.get('url')
+            if not media_url and not is_video:
+                media_url = info.get('thumbnail')
+
+            return jsonify({
+                "success": True,
+                "data": {
+                    "video_url": media_url, # Link isme aayega
+                    "thumbnail": info.get('thumbnail') or media_url,
+                    "is_video": is_video # Flutter app ko batayega ki photo hai ya video
+                }
+            })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-# Server ko port 5000 par run karna
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(debug=True, host='0.0.0.0', port=5000)
