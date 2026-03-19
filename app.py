@@ -13,8 +13,8 @@ def get_media_link():
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
-        # NAYA JADOO: Agar video na mile (sirf photo ho), toh crash mat hona!
-        'ignore_no_formats_error': True, 
+        'ignoreerrors': True,              # 👈 JADOO 1: Koi bhi error aaye, ignore karo!
+        'ignore_no_formats_error': True,   # 👈 JADOO 2: Video na mile toh photo utha lo!
         'cookiefile': 'cookies.txt', 
     }
 
@@ -22,11 +22,15 @@ def get_media_link():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             
+            # Agar data bilkul na mile
+            if not info:
+                return jsonify({"success": False, "error": "Could not fetch data. Private account or no media."}), 400
+            
             media_items = []
             title = info.get('title', 'No Title')
             platform = info.get('extractor_key', 'Unknown')
 
-            # Check karne ka smart tarika
+            # Video aur Photo pehchanne ka engine
             def check_is_video(media_info):
                 ext = media_info.get('ext', '').lower()
                 if ext in ['jpg', 'jpeg', 'png', 'webp']:
@@ -35,22 +39,30 @@ def get_media_link():
                     return False
                 return True
 
-            if 'entries' in info:
+            # Agar bohot saari photos hain (Carousel)
+            if 'entries' in info and info['entries']:
                 for entry in info['entries']:
-                    media_url = entry.get('url') or entry.get('thumbnail')
-                    if media_url: 
-                        media_items.append({
-                            "url": media_url,
-                            "thumbnail": entry.get('thumbnail') or media_url,
-                            "is_video": check_is_video(entry)
-                        })
+                    if entry: # Agar entry khali nahi hai
+                        media_url = entry.get('url') or entry.get('thumbnail')
+                        if media_url: 
+                            media_items.append({
+                                "url": media_url,
+                                "thumbnail": entry.get('thumbnail') or media_url,
+                                "is_video": check_is_video(entry)
+                            })
             else:
+                # Agar single photo ya video hai
                 media_url = info.get('url') or info.get('thumbnail')
-                media_items.append({
-                    "url": media_url,
-                    "thumbnail": info.get('thumbnail') or media_url,
-                    "is_video": check_is_video(info)
-                })
+                if media_url:
+                    media_items.append({
+                        "url": media_url,
+                        "thumbnail": info.get('thumbnail') or media_url,
+                        "is_video": check_is_video(info)
+                    })
+
+            # Agar fir bhi kuch na mile
+            if not media_items:
+                return jsonify({"success": False, "error": "No media found in the link."}), 400
 
             return jsonify({
                 "success": True,
