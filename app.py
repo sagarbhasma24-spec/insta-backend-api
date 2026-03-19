@@ -4,47 +4,63 @@ import yt_dlp
 app = Flask(__name__)
 
 @app.route('/api/download', methods=['GET'])
-def download_video():
-    # 1. Flutter app se URL lena
-    video_url = request.args.get('url')
-    
-    if not video_url:
-        return jsonify({"success": False, "error": "URL is missing"}), 400
+def get_media_link():
+    url = request.args.get('url')
+    if not url:
+        return jsonify({"success": False, "error": "URL is required!"}), 400
 
-    # 2. yt-dlp ki settings (Sirf link nikalna hai, download nahi karna)
+    # All-in-One Universal Settings
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
-        'format': 'best', 
-        'cookiefile': 'cookies.txt',# HD quality ke liye
+        'format': 'best', # Har platform se sabse best quality nikalega
+        # WARNING: Instagram/Facebook ke liye cookies.txt hona zaroori hai
+        'cookiefile': 'cookies.txt', 
     }
 
     try:
-        # 3. Instagram se data nikalna
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(video_url, download=False)
+            # Extract info bina download kiye
+            info = ydl.extract_info(url, download=False)
             
-            # Agar list format mein aaye
-            if 'entries' in info:
-                info = info['entries'][0]
-            
-            video_link = info.get('url', '')
-            thumbnail = info.get('thumbnail', '')
+            media_items = []
+            title = info.get('title', 'No Title')
+            platform = info.get('extractor_key', 'Unknown') # Batayega ki link kahan ka hai (Youtube, Instagram, etc.)
 
-            if video_link:
-                return jsonify({
-                    "success": True,
-                    "data": {
-                        "video_url": video_link,
-                        "thumbnail": thumbnail
-                    }
-                })
+            # JADOO: Agar Instagram post mein 2-4 photos/videos ek sath hain (Carousel), ya YouTube Playlist hai
+            if 'entries' in info:
+                for entry in info['entries']:
+                    is_video = entry.get('ext') in ['mp4', 'webm'] or entry.get('vcodec') != 'none'
+                    media_url = entry.get('url') or entry.get('thumbnail')
+                    if media_url: # Sirf valid links lenge
+                        media_items.append({
+                            "url": media_url,
+                            "thumbnail": entry.get('thumbnail') or media_url,
+                            "is_video": is_video
+                        })
             else:
-                return jsonify({"success": False, "error": "Video link nahi mila"}), 404
-                
+                # Single Video, Photo ya Reel
+                is_video = info.get('ext') in ['mp4', 'webm'] or info.get('vcodec') != 'none'
+                media_url = info.get('url') or info.get('thumbnail')
+                media_items.append({
+                    "url": media_url,
+                    "thumbnail": info.get('thumbnail') or media_url,
+                    "is_video": is_video
+                })
+
+            # Flutter app ko mast format mein data bhejna
+            return jsonify({
+                "success": True,
+                "platform": platform, # App mein logo dikhane ke kaam aayega!
+                "title": title,
+                "data": media_items # Isme saari photos/videos ki list hogi
+            })
+
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-# Server ko port 5000 par run karna
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Render cloud ke liye port binding
+    import os
+    port = int(os.environ.get("PORT", 10000))
+    app.run(debug=True, host='0.0.0.0', port=port)
