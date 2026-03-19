@@ -15,7 +15,8 @@ def download_video():
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
-        'format': 'best', # HD quality ke liye
+        'format': 'best', 
+        'cookiefile': 'cookies.txt',# HD quality ke liye
     }
 
     try:
