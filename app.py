@@ -7,111 +7,101 @@ import re
 
 app = Flask(__name__)
 
-# 🚀 THE MASTERSTROKE FALLBACK ENGINE FOR INSTAGRAM PHOTOS
-def get_insta_photo_fallback(url):
+# 📸 ENGINE 2: Sirf Instagram Photos ke liye Custom Scraper
+def get_instagram_photo(url):
     try:
         # Aapke cookies.txt ka use karke Instagram ko Insaan lagne ka jadoo
         cj = http.cookiejar.MozillaCookieJar('cookies.txt')
         cj.load(ignore_discard=True, ignore_expires=True)
         opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-        # Mobile ka bhes badalna (User-Agent)
-        opener.addheaders = [('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1')]
         
-        response = opener.open(url, timeout=10)
+        # Ek Asli Browser hone ka natak (User-Agent)
+        opener.addheaders = [
+            ('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'),
+            ('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8')
+        ]
+        
+        response = opener.open(url, timeout=15)
         html = response.read().decode('utf-8')
         
-        # HTML coding me se direct HD photo ka link chura lena
+        # HTML coding me se direct HD photo (og:image) ka link chura lena
         match = re.search(r'<meta property="og:image" content="([^"]+)"', html)
         if match:
             img_url = match.group(1).replace('&amp;', '&')
             return img_url
     except Exception as e:
-        print("Fallback Error:", e)
-        pass
+        print("Photo extraction failed:", e)
     return None
 
-@app.route('/api/download', methods=['GET'])
-def get_media_link():
-    url = request.args.get('url')
-    if not url:
-        return jsonify({"success": False, "error": "URL is required!"}), 400
 
+@app.route('/api/download', methods=['GET'])
+def insta_downloader():
+    url = request.args.get('url')
+    
+    # Check 1: Agar link khali hai ya Instagram ka nahi hai
+    if not url or 'instagram.com' not in url:
+        return jsonify({"success": False, "error": "Please provide a valid Instagram link!"}), 400
+
+    # 🎥 ENGINE 1: Reels, Video, aur Story nikalne ke liye
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
-        'cookiefile': 'cookies.txt', 
+        'ignoreerrors': True, # Koi chota error aaye toh usko ignore karo
+        'cookiefile': 'cookies.txt', # Aapka Identity Card
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            
-            if not info:
-                raise Exception("Empty data from yt-dlp")
+
+            # Agar Engine 1 ko data mil jata hai (Reels/Video)
+            if info and ('entries' in info or info.get('url') or info.get('vcodec') != 'none'):
+                media_items = []
                 
-            media_items = []
-            title = info.get('title', 'No Title')
-            platform = info.get('extractor_key', 'Unknown')
+                # Agar ek sath bohot saari video/photo hain (Carousel)
+                if 'entries' in info and info['entries']:
+                    for entry in info['entries']:
+                        if entry:
+                            m_url = entry.get('url') or entry.get('thumbnail')
+                            is_vid = entry.get('ext') == 'mp4' or entry.get('vcodec') != 'none'
+                            if m_url:
+                                media_items.append({"url": m_url, "thumbnail": entry.get('thumbnail') or m_url, "is_video": is_vid})
+                
+                # Agar single Reel ya Story hai
+                else:
+                    m_url = info.get('url') or info.get('thumbnail')
+                    is_vid = info.get('ext') == 'mp4' or info.get('vcodec') != 'none'
+                    if m_url:
+                        media_items.append({"url": m_url, "thumbnail": info.get('thumbnail') or m_url, "is_video": is_vid})
 
-            def check_is_video(media_info):
-                ext = media_info.get('ext', '').lower()
-                if ext in ['jpg', 'jpeg', 'png', 'webp']:
-                    return False
-                if media_info.get('vcodec') == 'none':
-                    return False
-                return True
-
-            if 'entries' in info and info['entries']:
-                for entry in info['entries']:
-                    if entry:
-                        media_url = entry.get('url') or entry.get('thumbnail')
-                        if media_url: 
-                            media_items.append({
-                                "url": media_url,
-                                "thumbnail": entry.get('thumbnail') or media_url,
-                                "is_video": check_is_video(entry)
-                            })
-            else:
-                media_url = info.get('url') or info.get('thumbnail')
-                if media_url:
-                    media_items.append({
-                        "url": media_url,
-                        "thumbnail": info.get('thumbnail') or media_url,
-                        "is_video": check_is_video(info)
+                if media_items:
+                    print("✅ ENGINE 1 SUCCESS: Video/Reel found!")
+                    return jsonify({
+                        "success": True,
+                        "platform": "Instagram",
+                        "data": media_items
                     })
 
-            if not media_items:
-                raise Exception("No media found in the link.")
-
-            return jsonify({
-                "success": True,
-                "platform": platform,
-                "title": title,
-                "data": media_items
-            })
-
     except Exception as e:
-        error_msg = str(e)
-        
-        # JADOO: Agar yt-dlp Instagram Photo par fail ho jaye, toh apna Fallback Engine chalana!
-        if "No video formats found" in error_msg or "Instagram" in error_msg:
-            fallback_img_url = get_insta_photo_fallback(url)
-            
-            if fallback_img_url:
-                print("✅ FALLBACK ENGINE SUCCESS: Photo Extracted!")
-                return jsonify({
-                    "success": True,
-                    "platform": "Instagram",
-                    "title": "Instagram Photo",
-                    "data": [{
-                        "url": fallback_img_url,
-                        "thumbnail": fallback_img_url,
-                        "is_video": False # App ko bata do ki ye video nahi, Photo hai
-                    }]
-                })
+        print("Engine 1 failed, starting Engine 2...", e)
 
-        # Agar fallback bhi fail ho jaye
-        return jsonify({"success": False, "error": error_msg}), 500
+    # 📸 ENGINE 2 TRIGGER: Agar Engine 1 fail ho gaya (Kyunki wo Photo post thi)
+    photo_url = get_instagram_photo(url)
+    
+    if photo_url:
+        print("✅ ENGINE 2 SUCCESS: Photo Post found!")
+        return jsonify({
+            "success": True,
+            "platform": "Instagram",
+            "data": [{
+                "url": photo_url,
+                "thumbnail": photo_url,
+                "is_video": False # Flutter app ko bata do ki ye photo hai
+            }]
+        })
+
+    # Agar dono Engine fail ho jayein (Account private ho ya link galat ho)
+    return jsonify({"success": False, "error": "Could not download media. Post might be from a Private Account."}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
