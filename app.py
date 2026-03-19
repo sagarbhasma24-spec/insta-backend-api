@@ -13,8 +13,9 @@ def get_media_link():
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
-        'format': 'best', 
-        'cookiefile': 'cookies.txt', # Aapka mast Identity Card
+        # NAYA JADOO: Agar video na mile (sirf photo ho), toh crash mat hona!
+        'ignore_no_formats_error': True, 
+        'cookiefile': 'cookies.txt', 
     }
 
     try:
@@ -25,7 +26,7 @@ def get_media_link():
             title = info.get('title', 'No Title')
             platform = info.get('extractor_key', 'Unknown')
 
-            # NAYA JADOO: Ye function kabhi Photo ko Video nahi manega!
+            # Check karne ka smart tarika
             def check_is_video(media_info):
                 ext = media_info.get('ext', '').lower()
                 if ext in ['jpg', 'jpeg', 'png', 'webp']:
@@ -41,14 +42,14 @@ def get_media_link():
                         media_items.append({
                             "url": media_url,
                             "thumbnail": entry.get('thumbnail') or media_url,
-                            "is_video": check_is_video(entry) # Smart Checking
+                            "is_video": check_is_video(entry)
                         })
             else:
                 media_url = info.get('url') or info.get('thumbnail')
                 media_items.append({
                     "url": media_url,
                     "thumbnail": info.get('thumbnail') or media_url,
-                    "is_video": check_is_video(info) # Smart Checking
+                    "is_video": check_is_video(info)
                 })
 
             return jsonify({
