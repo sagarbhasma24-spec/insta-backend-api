@@ -1,118 +1,99 @@
-from flask import Flask, request, jsonify
-import yt_dlp
 import os
-import urllib.request
-import http.cookiejar
-import re
+import requests
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# 🚀 ENGINE 3: DIRECT VIDEO SCRAPER (The Brahmastra - Instagram ko bypass karne ke liye)
-def get_direct_video(url):
-    try:
-        cj = http.cookiejar.MozillaCookieJar('cookies.txt')
-        try:
-            cj.load(ignore_discard=True, ignore_expires=True)
-        except:
-            pass # Agar cookies nahi hain toh bhi try karega
-        
-        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-        opener.addheaders = [
-            ('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'),
-        ]
-        response = opener.open(url, timeout=15)
-        html = response.read().decode('utf-8')
-        
-        # HTML ke andar chhupa hua direct MP4 link nikalna
-        match = re.search(r'<meta property="og:video" content="([^"]+)"', html)
-        if match:
-            return match.group(1).replace('&amp;', '&')
-    except Exception as e:
-        print("Direct Video Scraper Failed:", e)
-    return None
+# ==========================================
+# 🚀 RAPID-API SETTINGS (Yahan Apni Details Dalein)
+# ==========================================
+RAPIDAPI_HOST = "instagram120.p.rapidapi.com"
 
-# 📸 ENGINE 2: DIRECT PHOTO SCRAPER
-def get_instagram_photo(url):
-    try:
-        cj = http.cookiejar.MozillaCookieJar('cookies.txt')
-        try:
-            cj.load(ignore_discard=True, ignore_expires=True)
-        except:
-            pass
-        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-        opener.addheaders = [
-            ('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'),
-        ]
-        response = opener.open(url, timeout=15)
-        html = response.read().decode('utf-8')
-        match = re.search(r'<meta property="og:image" content="([^"]+)"', html)
-        if match:
-            return match.group(1).replace('&amp;', '&')
-    except Exception as e:
-        print("Photo extraction failed:", e)
-    return None
+# 👉 NEECHE WALI LINE MEIN APNI SECRET KEY PASTE KAREIN:
+RAPIDAPI_KEY = "4235a82a72msh13a79567a3dc3fap1010b5jsn82fdb958a826" 
+
+# RapidAPI dashboard ke "Code Snippet" se exact URL check kar lein, mostly yahi hota hai:
+RAPIDAPI_URL = f"https://{RAPIDAPI_HOST}/api/instagram/links" 
+
+
+# 🧠 SMART JSON SCANNER (API ke data mein se video dhoondhne ke liye)
+def extract_media(data):
+    urls = []
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if isinstance(value, str) and value.startswith("http"):
+                # Agar link mein .mp4 hai ya key ka naam video hai
+                if ".mp4" in value or "video" in key.lower():
+                    urls.append({"url": value, "is_video": True})
+                # Agar link photo ka hai
+                elif ".jpg" in value or ".webp" in value or "thumbnail" in key.lower() or "image" in key.lower():
+                    urls.append({"url": value, "is_video": False})
+            else:
+                urls.extend(extract_media(value))
+    elif isinstance(data, list):
+        for item in data:
+            urls.extend(extract_media(item))
+    return urls
 
 @app.route('/api/download', methods=['GET'])
 def insta_downloader():
-    url = request.args.get('url')
-    if not url or 'instagram.com' not in url:
-        return jsonify({"success": False, "error": "Invalid Instagram URL"}), 400
+    insta_url = request.args.get('url')
+    
+    if not insta_url:
+        return jsonify({"success": False, "error": "Instagram URL is required"}), 400
 
-    # Check karna ki user ne Reel/Video bheji hai ya kuch aur
-    is_reel_url = '/reel/' in url or '/tv/' in url or '/v/' in url
-
-    # 🚀 STEP 1: Agar Reel hai, toh pehle Direct Scraper (Brahmastra) chalao
-    if is_reel_url:
-        direct_vid_url = get_direct_video(url)
-        if direct_vid_url and '.mp4' in direct_vid_url:
-            print("✅ ENGINE 3 SUCCESS: Asli MP4 Reel Mil Gayi!")
-            return jsonify({
-                "success": True, 
-                "platform": "Instagram", 
-                "data": [{"url": direct_vid_url, "thumbnail": direct_vid_url, "is_video": True}]
-            })
-
-    # 🎥 STEP 2: Agar Direct Scraper fail ho jaye, tab yt-dlp use karo
-    ydl_opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'ignoreerrors': True,
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', 
-        'cookiefile': 'cookies.txt',
+    # API ko request bhejenge (Kuch APIs parameter ka naam 'url' leti hain, kuch 'ig')
+    querystring = {"url": insta_url} 
+    
+    headers = {
+        "x-rapidapi-host": RAPIDAPI_HOST,
+        "x-rapidapi-key": RAPIDAPI_KEY
     }
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            
-            if info:
-                extracted_url = info.get('url')
-                if extracted_url:
-                    # STRICT CHECK: Agar yt-dlp photo (.jpg) de raha hai aur link reel ka hai, toh REJECT karo!
-                    if ('.jpg' in extracted_url or '.webp' in extracted_url) and is_reel_url:
-                        print("❌ yt-dlp trying to fake video with image. Rejecting!")
-                    else:
-                        is_vid = info.get('ext') == 'mp4' or info.get('vcodec') != 'none' or '.mp4' in extracted_url
-                        if is_vid:
-                            return jsonify({
-                                "success": True, 
-                                "platform": "Instagram", 
-                                "data": [{"url": extracted_url, "thumbnail": info.get('thumbnail') or extracted_url, "is_video": True}]
-                            })
+        # RapidAPI server ko hit karna
+        response = requests.get(RAPIDAPI_URL, headers=headers, params=querystring, timeout=15)
+        api_data = response.json()
+        
+        # Smart Scanner ko chalana
+        media_list = extract_media(api_data)
+        
+        # Videos aur Photos ko alag karna
+        videos = [m for m in media_list if m['is_video']]
+        images = [m for m in media_list if not m['is_video']]
+        
+        final_data = []
+        
+        if videos:
+            print("✅ API SUCCESS: Asli Video Mil Gayi!")
+            final_data.append({
+                "url": videos[0]['url'],
+                "thumbnail": images[0]['url'] if images else videos[0]['url'],
+                "is_video": True
+            })
+        elif images:
+            print("📸 API SUCCESS: Photo Mil Gayi!")
+            final_data.append({
+                "url": images[0]['url'],
+                "thumbnail": images[0]['url'],
+                "is_video": False
+            })
+
+        if final_data:
+            return jsonify({
+                "success": True,
+                "platform": "Instagram",
+                "data": final_data
+            })
+        else:
+            return jsonify({
+                "success": False, 
+                "error": "API did not return a valid video. Ensure the RapidAPI URL is correct.",
+                "raw_api_response": api_data
+            }), 500
+
     except Exception as e:
-        print("yt-dlp Exception:", e)
-
-    # 📸 STEP 3: Agar link kisi Photo post ka hai, toh photo nikal lo
-    photo_url = get_instagram_photo(url)
-    if photo_url:
-        return jsonify({
-            "success": True,
-            "platform": "Instagram",
-            "data": [{"url": photo_url, "thumbnail": photo_url, "is_video": False}]
-        })
-
-    # Agar teeno engine fail ho jayein
-    return jsonify({"success": False, "error": "Could not extract video. Account might be private."}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
