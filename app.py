@@ -5,28 +5,26 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 # ==========================================
-# 🚀 RAPID-API SETTINGS (Yahan Apni Details Dalein)
+# 🚀 RAPID-API SETTINGS (Premium Engine)
 # ==========================================
 RAPIDAPI_HOST = "instagram120.p.rapidapi.com"
 
 # 👉 NEECHE WALI LINE MEIN APNI SECRET KEY PASTE KAREIN:
 RAPIDAPI_KEY = "4235a82a72msh13a79567a3dc3fap1010b5jsn82fdb958a826" 
 
-# RapidAPI dashboard ke "Code Snippet" se exact URL check kar lein, mostly yahi hota hai:
-RAPIDAPI_URL = f"https://{RAPIDAPI_HOST}/api/instagram/links" 
+# 👇 YAHAN HUMNE AAPKA BHOONDA HUA ASLI URL DAAL DIYA HAI
+RAPIDAPI_URL = "https://instagram120.p.rapidapi.com/api/instagram/reels" 
 
 
-# 🧠 SMART JSON SCANNER (API ke data mein se video dhoondhne ke liye)
+# 🧠 SMART JSON SCANNER (Data nikalne ka Jadoo)
 def extract_media(data):
     urls = []
     if isinstance(data, dict):
         for key, value in data.items():
             if isinstance(value, str) and value.startswith("http"):
-                # Agar link mein .mp4 hai ya key ka naam video hai
                 if ".mp4" in value or "video" in key.lower():
                     urls.append({"url": value, "is_video": True})
-                # Agar link photo ka hai
-                elif ".jpg" in value or ".webp" in value or "thumbnail" in key.lower() or "image" in key.lower():
+                elif ".jpg" in value or ".webp" in value or "thumbnail" in key.lower() or "image" in key.lower() or "cover" in key.lower():
                     urls.append({"url": value, "is_video": False})
             else:
                 urls.extend(extract_media(value))
@@ -42,7 +40,7 @@ def insta_downloader():
     if not insta_url:
         return jsonify({"success": False, "error": "Instagram URL is required"}), 400
 
-    # API ko request bhejenge (Kuch APIs parameter ka naam 'url' leti hain, kuch 'ig')
+    # API ko link bhejna
     querystring = {"url": insta_url} 
     
     headers = {
@@ -51,28 +49,28 @@ def insta_downloader():
     }
 
     try:
-        # RapidAPI server ko hit karna
+        # RapidAPI Server ko Hit Karna
         response = requests.get(RAPIDAPI_URL, headers=headers, params=querystring, timeout=15)
         api_data = response.json()
         
-        # Smart Scanner ko chalana
+        # Scanner chalana
         media_list = extract_media(api_data)
         
-        # Videos aur Photos ko alag karna
+        # Videos aur Photos alag karna
         videos = [m for m in media_list if m['is_video']]
         images = [m for m in media_list if not m['is_video']]
         
         final_data = []
         
         if videos:
-            print("✅ API SUCCESS: Asli Video Mil Gayi!")
+            print("✅ API SUCCESS: Asli MP4 Video Mil Gayi!")
             final_data.append({
                 "url": videos[0]['url'],
                 "thumbnail": images[0]['url'] if images else videos[0]['url'],
                 "is_video": True
             })
         elif images:
-            print("📸 API SUCCESS: Photo Mil Gayi!")
+            print("📸 API SUCCESS: Sirf Photo Mili!")
             final_data.append({
                 "url": images[0]['url'],
                 "thumbnail": images[0]['url'],
@@ -88,7 +86,7 @@ def insta_downloader():
         else:
             return jsonify({
                 "success": False, 
-                "error": "API did not return a valid video. Ensure the RapidAPI URL is correct.",
+                "error": "Could not find video link in API response.",
                 "raw_api_response": api_data
             }), 500
 
