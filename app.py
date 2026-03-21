@@ -5,18 +5,17 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 # ==========================================
-# 🚀 RAPID-API SETTINGS (Premium Engine)
+# 🚀 RAPID-API SETTINGS (Premium POST Engine)
 # ==========================================
 RAPIDAPI_HOST = "instagram120.p.rapidapi.com"
 
 # 👉 NEECHE WALI LINE MEIN APNI SECRET KEY PASTE KAREIN:
 RAPIDAPI_KEY = "4235a82a72msh13a79567a3dc3fap1010b5jsn82fdb958a826" 
 
-# 👇 YAHAN HUMNE AAPKA BHOONDA HUA ASLI URL DAAL DIYA HAI
-RAPIDAPI_URL = "https://instagram120.p.rapidapi.com/api/instagram/reels" 
+# URL wahi sahi wala hai:
+RAPIDAPI_URL = "https://instagram120.p.rapidapi.com/api/instagram/links" 
 
-
-# 🧠 SMART JSON SCANNER (Data nikalne ka Jadoo)
+# 🧠 SMART JSON SCANNER
 def extract_media(data):
     urls = []
     if isinstance(data, dict):
@@ -40,23 +39,22 @@ def insta_downloader():
     if not insta_url:
         return jsonify({"success": False, "error": "Instagram URL is required"}), 400
 
-    # API ko link bhejna
-    querystring = {"url": insta_url} 
+    # 👉 JADOO YAHAN HAI: Ab data ko POST (JSON) format mein bhej rahe hain
+    payload = {"url": insta_url} 
     
     headers = {
         "x-rapidapi-host": RAPIDAPI_HOST,
-        "x-rapidapi-key": RAPIDAPI_KEY
+        "x-rapidapi-key": RAPIDAPI_KEY,
+        "Content-Type": "application/json" # API ko batana zaroori hai ki data JSON hai
     }
 
     try:
-        # RapidAPI Server ko Hit Karna
-        response = requests.get(RAPIDAPI_URL, headers=headers, params=querystring, timeout=15)
+        # 👉 JADOO 2: requests.get() ko hata kar requests.post() kar diya hai
+        response = requests.post(RAPIDAPI_URL, json=payload, headers=headers, timeout=15)
         api_data = response.json()
         
-        # Scanner chalana
         media_list = extract_media(api_data)
         
-        # Videos aur Photos alag karna
         videos = [m for m in media_list if m['is_video']]
         images = [m for m in media_list if not m['is_video']]
         
